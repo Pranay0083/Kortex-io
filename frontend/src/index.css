@@ -1,0 +1,200 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        --background: 0 0% 2%;
+        --foreground: 0 0% 100%;
+        --card: 0 0% 6.3%;
+        --card-foreground: 0 0% 98%;
+        --popover: 0 0% 4%;
+        --popover-foreground: 0 0% 98%;
+        --primary: 187 100% 50%;
+        --primary-foreground: 0 0% 0%;
+        --secondary: 0 0% 12%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 0 0% 13%;
+        --muted-foreground: 0 0% 63%;
+        --accent: 0 0% 14%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 3 100% 60%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 0 0% 13.3%;
+        --input: 0 0% 13.3%;
+        --ring: 187 100% 50%;
+        --radius: 0px;
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+        -webkit-font-smoothing: antialiased;
+    }
+    html {
+        scroll-behavior: smooth;
+    }
+    body {
+        margin: 0;
+        background-color: #050505;
+        color: #ffffff;
+        font-family: Archivo, ui-sans-serif, system-ui, sans-serif;
+    }
+    ::selection {
+        background: #00e5ff;
+        color: #000;
+    }
+    h1,
+    h2,
+    h3,
+    h4 {
+        font-family: Chivo, ui-sans-serif, system-ui, sans-serif;
+    }
+    input,
+    textarea,
+    select,
+    button {
+        font-family: inherit;
+    }
+}
+
+/* ---- kortex primitives ---------------------------------------------- */
+
+.kx-grid {
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+}
+
+.kx-grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.055;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.kx-scanlines::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 255, 102, 0.04) 0px,
+        rgba(0, 255, 102, 0.04) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+}
+
+.kx-panel {
+    background-color: #0a0a0a;
+    border: 1px solid #222222;
+    transition:
+        border-color 180ms ease,
+        background-color 180ms ease;
+}
+.kx-panel:hover {
+    border-color: #303030;
+}
+
+.kx-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: #5a5a5f;
+}
+
+.kx-num {
+    font-family: "JetBrains Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+}
+
+.kx-btn {
+    font-family: "JetBrains Mono", monospace;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 12px;
+    transition:
+        background-color 160ms ease,
+        color 160ms ease,
+        border-color 160ms ease,
+        transform 120ms ease;
+}
+.kx-btn:active {
+    transform: scale(0.975);
+}
+
+.kx-input {
+    background-color: #050505;
+    border: 1px solid #222222;
+    color: #fff;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    transition:
+        border-color 160ms ease,
+        box-shadow 160ms ease;
+}
+.kx-input:focus {
+    outline: none;
+    border-color: #00e5ff;
+    box-shadow: inset 0 0 0 1px rgba(0, 229, 255, 0.25);
+}
+.kx-input::placeholder {
+    color: #3f3f46;
+}
+
+.kx-marquee {
+    animation: kx-marquee 42s linear infinite;
+}
+@keyframes kx-marquee {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+.kx-row-new {
+    animation: kx-flash 1.1s ease-out 1;
+}
+
+::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+}
+::-webkit-scrollbar-track {
+    background: #0a0a0a;
+}
+::-webkit-scrollbar-thumb {
+    background: #262626;
+    border: 1px solid #0a0a0a;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
+@layer base {
+    [data-debug-wrapper="true"] {
+        display: contents !important;
+    }
+}
