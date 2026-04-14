@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kortex
+      POSTGRES_USER: kortex
+      POSTGRES_PASSWORD: kortex
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kortex -d kortex"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  kortex:
+    build:
+      context: ./backend/kortex
+    environment:
+      KORTEX_PORT: "8090"
+      POSTGRES_URL: postgres://kortex:kortex@postgres:5432/kortex?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-this-secret}
+      PUBLIC_BASE_URL: http://localhost:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8090"
+
+  proxy:
+    build:
+      context: ./backend
+    environment:
+      KORTEX_UPSTREAM: http://kortex:8090
+    depends_on:
+      - kortex
+    ports:
+      - "8001:8001"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_BACKEND_URL: http://localhost:8001
+    depends_on:
+      - proxy
+    ports:
+      - "3000:80"
+
+volumes:
+  postgres_data:
