@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /$
+Allow: /architecture
+Allow: /lab
+Disallow: /app
+Disallow: /api/

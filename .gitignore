@@ -1,12 +1,9 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # IDE and editors
 .idea/
 .vscode/
 
 # Dependencies
 node_modules/
-/node_modules
 /.pnp
 .pnp.js
 .yarn/install-state.gz
@@ -16,24 +13,15 @@ node_modules/
 !.yarn/releases
 !.yarn/versions
 
-# Testing
+# Testing / coverage
 /coverage
-
-# Next.js
-/.next/
-/out/
-next-env.d.ts
-*.tsbuildinfo
+coverage.out
+*.test
 
 # Production builds
 /build
+frontend/build/
 dist/
-dist
-
-# Environment files (comprehensive coverage)
-
-*token.json*
-*credentials.json*
 
 # Logs and debug files
 npm-debug.log*
@@ -44,48 +32,34 @@ dump.rdb
 
 # System files
 .DS_Store
-*.pem
 
-# Python
-__pycache__/
-*pyc*
-venv/
-.venv/
-
-# Development tools
-chainlit.md
-.chainlit
-.ipynb_checkpoints/
-.ac
-
-# Deployment
-.vercel
-
-# Data and databases
-agenthub/agents/youtube/db
-
-# Archive files and large assets
+# Archives and binaries
 **/*.zip
 **/*.tar.gz
 **/*.tar
 **/*.tgz
-*.pack
-*.deb
 *.dylib
+backend/kortex
+backend/bin/
+
+# GeoIP databases (licensed, download separately)
+*.mmdb
 
 # Build caches
 .cache/
 
-memory/test_credentials.md
-
-# Mobile development
-android-sdk/
 # local go toolchain (not part of the repo)
 .toolchain/
-backend/kortex/bin/
+
+# Secrets
 .env
 .env.*
 *.env
-credentials.json
-*.key
+!.env.example
+!frontend/.env.example
+*token.json*
+*credentials.json*
 .credentials
+*.pem
+*.key
+memory/test_credentials.md
