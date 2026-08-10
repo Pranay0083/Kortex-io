@@ -1,10 +1,22 @@
+// Shared console primitives. Colours come from theme tokens only (text-kx-*,
+// bg-kx-*, border-kx-*), so everything here works in light and dark.
+
+const TONE_TEXT = {
+  default: "text-kx-ink",
+  accent: "text-kx-accent",
+  positive: "text-kx-positive",
+  negative: "text-kx-negative",
+  warning: "text-kx-warning",
+  muted: "text-kx-muted",
+};
+
 export const Panel = ({ title, sub, right, children, className = "", testid, pad = "p-5" }) => (
   <section data-testid={testid} className={`kx-panel relative flex flex-col ${className}`}>
     {(title || right) && (
-      <header className="flex items-start justify-between gap-4 border-b border-kx-line px-5 py-3">
-        <div>
-          {title && <div className="kx-label">{title}</div>}
-          {sub && <div className="mt-1 text-xs text-zinc-500">{sub}</div>}
+      <header className="flex items-start justify-between gap-4 border-b border-kx-line px-5 py-3.5">
+        <div className="min-w-0">
+          {title && <h2 className="text-sm font-semibold text-kx-ink">{title}</h2>}
+          {sub && <div className="mt-0.5 text-xs text-kx-muted">{sub}</div>}
         </div>
         {right}
       </header>
@@ -13,80 +25,183 @@ export const Panel = ({ title, sub, right, children, className = "", testid, pad
   </section>
 );
 
-export const Stat = ({ label, value, unit, sub, accent = "#FFFFFF", testid }) => (
-  <div
-    data-testid={testid}
-    className="kx-panel group border-l-2 border-l-kx-line px-4 py-4 transition-colors hover:border-l-kx-cyan"
-  >
+/**
+ * One headline figure. Use `tone` only when the value is a status
+ * (negative for an error count, positive for "healthy"); figures are ink by default.
+ */
+export const Stat = ({ label, value, unit, sub, tone = "default", testid }) => (
+  <div data-testid={testid} className="kx-panel px-4 py-4">
     <div className="kx-label">{label}</div>
-    <div className="mt-2 flex items-baseline gap-1.5">
-      <span className="kx-num text-2xl font-bold lg:text-3xl" style={{ color: accent }}>
+    <div className="mt-1.5 flex items-baseline gap-1">
+      <span className={`kx-num text-2xl font-semibold ${TONE_TEXT[tone] ?? TONE_TEXT.default}`}>
         {value}
       </span>
-      {unit && <span className="kx-num text-xs text-zinc-500">{unit}</span>}
+      {unit && <span className="text-sm text-kx-muted">{unit}</span>}
     </div>
-    {sub && <div className="mt-1.5 font-mono text-[11px] text-zinc-600">{sub}</div>}
+    {sub && <div className="kx-num mt-1 text-xs text-kx-muted">{sub}</div>}
   </div>
 );
 
-export const Chip = ({ children, tone = "zinc" }) => {
+/** Small status pill: a pale tint with text of the same hue. */
+export const Chip = ({ children, tone = "neutral", className = "" }) => {
   const tones = {
-    zinc: "border-kx-line text-zinc-400",
-    cyan: "border-kx-cyan/40 text-kx-cyan bg-kx-cyan/5",
-    green: "border-kx-green/40 text-kx-green bg-kx-green/5",
-    red: "border-kx-red/40 text-kx-red bg-kx-red/5",
-    yellow: "border-kx-yellow/40 text-kx-yellow bg-kx-yellow/5",
+    neutral: "bg-kx-hover text-kx-muted",
+    accent: "bg-kx-accent/10 text-kx-accent",
+    positive: "bg-kx-positive/10 text-kx-positive",
+    negative: "bg-kx-negative/10 text-kx-negative",
+    warning: "bg-kx-warning/10 text-kx-warning",
   };
   return (
     <span
-      className={`inline-flex items-center gap-1.5 border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest ${tones[tone]}`}
+      className={`inline-flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone] ?? tones.neutral} ${className}`}
     >
       {children}
     </span>
   );
 };
 
-export const Button = ({ variant = "primary", className = "", ...props }) => {
+export const Button = ({ variant = "primary", size = "md", className = "", ...props }) => {
   const styles = {
-    primary: "bg-kx-cyan text-black hover:bg-white",
-    ghost: "border border-kx-line text-white hover:border-zinc-500 hover:bg-kx-hover",
-    danger: "border border-kx-red/40 text-kx-red hover:bg-kx-red/10",
-    solid: "bg-white text-black hover:bg-zinc-200",
+    primary: "bg-kx-accent text-kx-on-accent hover:bg-kx-accent/90",
+    secondary: "border border-kx-line2 bg-kx-surface text-kx-ink hover:bg-kx-hover",
+    ghost: "text-kx-muted hover:bg-kx-hover hover:text-kx-ink",
+    danger: "border border-kx-negative/40 text-kx-negative hover:bg-kx-negative/10",
   };
+  const sizes = { sm: "h-8 px-3", md: "h-9 px-4", lg: "h-11 px-5 text-sm" };
   return (
     <button
+      type="button"
       {...props}
-      className={`kx-btn inline-flex items-center justify-center gap-2 px-4 py-2 disabled:cursor-not-allowed disabled:opacity-40 ${styles[variant]} ${className}`}
+      className={`kx-btn inline-flex items-center justify-center gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant] ?? styles.primary} ${sizes[size] ?? sizes.md} ${className}`}
     />
   );
 };
 
-export const Bar = ({ pct, color = "#00E5FF" }) => (
-  <div className="h-1 w-full bg-kx-line">
+/** Thin proportional bar; the fill is the data hue unless told otherwise. */
+export const Bar = ({ pct, className = "bg-kx-accent" }) => (
+  <div className="h-1.5 w-full overflow-hidden rounded-full bg-kx-hover">
     <div
-      className="h-full transition-[width] duration-500"
-      style={{ width: `${Math.min(100, pct)}%`, backgroundColor: color }}
+      className={`h-full rounded-full transition-[width] duration-500 ${className}`}
+      style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
     />
   </div>
 );
 
-export const ChartTip = ({ active, payload, label }) => {
+export const ChartTip = ({ active, payload, label, labelFormat }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="border border-kx-line2 bg-black px-3 py-2 font-mono text-[11px]">
-      <div className="mb-1 text-zinc-500">{label}</div>
+    <div className="rounded-control border border-kx-line bg-kx-surface px-3 py-2 text-xs shadow-lg">
+      <div className="mb-1 text-kx-muted">{labelFormat ? labelFormat(label) : label}</div>
       {payload.map((p, i) => (
-        <div key={i} className="flex items-center gap-2 text-white">
-          <span className="h-2 w-2" style={{ background: p.color || p.fill }} />
-          {p.name}: <span className="font-bold">{Number(p.value).toLocaleString()}</span>
+        <div key={i} className="flex items-center gap-2 text-kx-ink">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color || p.fill }} />
+          {p.name}: <span className="kx-num font-semibold">{Number(p.value).toLocaleString()}</span>
         </div>
       ))}
     </div>
   );
 };
 
-export const Empty = ({ children }) => (
-  <div className="flex h-full min-h-[140px] items-center justify-center border border-dashed border-kx-line font-mono text-xs text-zinc-600">
+/** Empty state: keeps the block's frame and says one plain sentence. */
+export const Empty = ({ children, className = "" }) => (
+  <div
+    className={`flex min-h-[72px] items-center justify-center rounded-control border border-dashed border-kx-line px-4 py-6 text-center text-sm text-kx-muted ${className}`}
+  >
     {children}
+  </div>
+);
+
+/** Loading placeholder: a flat block at the final size, no shimmer. */
+export const Skeleton = ({ className = "" }) => (
+  <div aria-hidden="true" className={`animate-kx-pulse rounded-control bg-kx-hover ${className}`} />
+);
+
+/** Inline error strip for failed polls/loads; keeps stale data visible underneath. */
+export const ErrorNote = ({ children, onRetry, testid }) => (
+  <div
+    role="alert"
+    data-testid={testid}
+    className="flex items-center justify-between gap-3 rounded-control border border-kx-negative/30 bg-kx-negative/5 px-3 py-2 text-sm text-kx-negative"
+  >
+    <span>{children}</span>
+    {onRetry && (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="kx-btn rounded-control px-2 py-0.5 font-medium underline-offset-2 hover:underline"
+      >
+        Retry
+      </button>
+    )}
+  </div>
+);
+
+/** Toggle-button group (range / dim / expiry selectors). */
+export const Segmented = ({
+  options,
+  value,
+  onChange,
+  label,
+  testidPrefix,
+  size = "md",
+  className = "",
+  itemClass = "",
+}) => (
+  <div
+    role="group"
+    aria-label={label}
+    className={`inline-flex rounded-control border border-kx-line bg-kx-hover p-0.5 ${className}`}
+  >
+    {options.map((o) => {
+      const opt = typeof o === "object" ? o : { v: o, l: o };
+      const id = opt.id ?? (opt.v || "auto");
+      const active = value === opt.v;
+      return (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={active}
+          data-testid={testidPrefix ? `${testidPrefix}${id}` : undefined}
+          onClick={() => onChange(opt.v)}
+          className={`kx-btn rounded-[5px] ${size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5"} ${
+            active ? "bg-kx-surface text-kx-ink shadow-sm" : "text-kx-muted hover:text-kx-ink"
+          } ${itemClass}`}
+        >
+          {opt.l || "auto"}
+        </button>
+      );
+    })}
+  </div>
+);
+
+/** Small square icon-only button; `label` is required for screen readers. */
+export const IconButton = ({ label, tone = "default", className = "", children, ...props }) => {
+  const tones = {
+    default: "hover:bg-kx-hover hover:text-kx-ink",
+    negative: "hover:bg-kx-negative/10 hover:text-kx-negative",
+  };
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      {...props}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-control text-kx-muted transition-colors disabled:opacity-40 ${tones[tone] ?? tones.default} ${className}`}
+    >
+      {children}
+    </button>
+  );
+};
+
+/** Page title row used by every console screen. */
+export const PageHeader = ({ title, sub, right, testid }) => (
+  <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="min-w-0">
+      <h1 data-testid={testid} className="text-2xl font-semibold text-kx-ink">
+        {title}
+      </h1>
+      {sub && <p className="mt-1 text-sm text-kx-muted">{sub}</p>}
+    </div>
+    {right && <div className="flex items-center gap-2">{right}</div>}
   </div>
 );

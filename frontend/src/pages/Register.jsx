@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
 import { apiError } from "@/lib/api";
 import { Button } from "@/components/kx";
-import { AuthFrame, Field } from "@/pages/Login";
+import { AuthFrame, Field, FormError } from "@/pages/Login";
 
 export default function Register() {
   const { register } = useAuth();
@@ -21,10 +21,10 @@ export default function Register() {
     setErr("");
     try {
       await register(form.email, form.password, form.name);
-      toast.success("Account provisioned");
+      toast.success("Account created");
       navigate("/app", { replace: true });
     } catch (ex) {
-      const m = apiError(ex, "Registration failed");
+      const m = apiError(ex, "Couldn't create the account");
       setErr(m);
       toast.error(m);
     }
@@ -33,51 +33,60 @@ export default function Register() {
 
   return (
     <AuthFrame
-      kicker="Provision"
-      title="New tenant"
+      title="Create your account"
+      sub="Your links, with click analytics from the first click."
       footer={
         <>
-          Already registered?{" "}
-          <Link to="/login" className="text-kx-cyan hover:underline" data-testid="to-login">
+          Already have an account?{" "}
+          <Link
+            to="/login"
+            className="font-medium text-kx-accent hover:underline"
+            data-testid="to-login"
+          >
             Sign in
           </Link>
         </>
       }
     >
       <form onSubmit={submit} className="mt-7 space-y-4" data-testid="register-form">
-        <Field label="Name" value={form.name} data-testid="register-name" onChange={set("name")} />
+        <Field
+          label="Name"
+          autoComplete="name"
+          value={form.name}
+          data-testid="register-name"
+          onChange={set("name")}
+        />
         <Field
           label="Email"
           type="email"
+          autoComplete="email"
           required
           value={form.email}
           data-testid="register-email"
           onChange={set("email")}
         />
         <Field
-          label="Password (8+ chars)"
+          label="Password"
+          hint="At least 8 characters."
           type="password"
+          autoComplete="new-password"
           required
           minLength={8}
           value={form.password}
           data-testid="register-password"
           onChange={set("password")}
         />
-        {err && (
-          <div
-            data-testid="register-error"
-            className="border border-kx-red/40 bg-kx-red/5 px-3 py-2 font-mono text-[11px] text-kx-red"
-          >
-            {err}
-          </div>
-        )}
-        <Button type="submit" disabled={busy} className="w-full py-3" data-testid="register-submit">
-          {busy ? "Provisioning…" : "Create account"}
+        {err && <FormError testid="register-error">{err}</FormError>}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={busy}
+          className="w-full"
+          data-testid="register-submit"
+        >
+          {busy ? "Creating account…" : "Create account"}
         </Button>
       </form>
-      <div className="mt-4 border border-kx-line bg-kx-surface px-3 py-2 font-mono text-[10px] leading-relaxed text-zinc-500">
-        bcrypt cost 11 · JWT HS256 · 40 links/min per-tenant rate limit
-      </div>
     </AuthFrame>
   );
 }

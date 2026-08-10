@@ -1,102 +1,140 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuth } from "@/context/AuthContext";
-import { apiError } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/kx";
-import { ArrowLeft, Terminal } from "lucide-react";
+import Logo from "@/components/Logo";
+import ThemeToggle from "@/components/ThemeToggle";
 
-export function AuthFrame({ title, kicker, children, footer }) {
+const POINTS = [
+  "Custom aliases, expiry dates and permanent or temporary redirects.",
+  "A QR code for every link, and one click to switch a link off.",
+  "Clicks broken down by referrer, device and browser as they happen.",
+];
+
+export function AuthFrame({ title, sub, children, footer }) {
   return (
-    <div className="relative flex min-h-screen bg-kx-bg">
-      <div className="kx-grid absolute inset-0 opacity-60" />
-      <div className="relative z-10 hidden w-1/2 flex-col justify-between border-r border-kx-line bg-kx-surface p-12 lg:flex">
-        <Link to="/" className="flex items-center gap-2" data-testid="auth-logo">
-          <div className="h-3 w-3 bg-kx-cyan" />
-          <span className="font-display text-xl font-black tracking-tighter">KORTEX</span>
-        </Link>
-        <div>
-          <div className="kx-label">System of record</div>
-          <p className="mt-4 max-w-md font-display text-3xl font-black leading-tight tracking-tighter">
-            Every short code is a Snowflake ID, base62-encoded, routed to one of four Postgres shards
-            through a consistent hash ring.
+    <div className="flex min-h-screen bg-kx-bg">
+      <aside className="hidden w-[44%] max-w-[600px] flex-col justify-between border-r border-kx-line bg-kx-surface p-12 lg:flex">
+        <Logo size={24} testid="auth-logo" />
+        <div className="max-w-md">
+          <p className="text-[28px] font-semibold leading-snug text-kx-ink">
+            Short links, with every click counted.
           </p>
-          <div className="mt-8 space-y-2 font-mono text-[11px] text-zinc-500">
-            <div className="flex gap-3">
-              <span className="text-kx-cyan">→</span> POST /shorten · id_gen → base62 → shard → warm redis
-            </div>
-            <div className="flex gap-3">
-              <span className="text-kx-green">→</span> GET /:code · redis hit → 302 → async click event
-            </div>
-            <div className="flex gap-3">
-              <span className="text-kx-yellow">→</span> consumer → columnar store → materialized rollups
-            </div>
+          <ul className="mt-6 space-y-3 text-[15px] leading-relaxed text-kx-ink2">
+            {POINTS.map((p) => (
+              <li key={p} className="flex gap-3">
+                <span
+                  className="mt-[9px] h-1.5 w-1.5 flex-none rounded-full bg-kx-accent"
+                  aria-hidden="true"
+                />
+                {p}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className="text-sm text-kx-muted">Built in Go with Postgres and Redis.</p>
+      </aside>
+
+      <main className="relative flex flex-1 flex-col">
+        <div className="flex items-center justify-between px-4 py-4 sm:px-6 lg:justify-end">
+          <Logo className="lg:hidden" />
+          <ThemeToggle />
+        </div>
+        <div className="flex flex-1 items-start justify-center px-4 pb-16 pt-6 sm:items-center sm:pt-0">
+          <div className="w-full max-w-sm">
+            <h1 className="text-2xl font-semibold text-kx-ink">{title}</h1>
+            {sub && <p className="mt-1.5 text-sm text-kx-muted">{sub}</p>}
+            {children}
+            <div className="mt-6 text-sm text-kx-muted">{footer}</div>
           </div>
         </div>
-        <div className="flex items-center gap-2 font-mono text-[11px] text-zinc-600">
-          <Terminal size={13} strokeWidth={1.5} /> go1.24 · postgres 15 · redis 7 · single node
-        </div>
-      </div>
-
-      <div className="relative z-10 flex w-full items-center justify-center p-6 lg:w-1/2">
-        <div className="w-full max-w-sm">
-          <Link
-            to="/"
-            className="mb-8 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-widest text-zinc-500 transition-colors hover:text-kx-cyan lg:hidden"
-          >
-            <ArrowLeft size={12} /> Kortex
-          </Link>
-          <div className="kx-label">{kicker}</div>
-          <h1 className="mt-2 font-display text-4xl font-black tracking-tighter">{title}</h1>
-          {children}
-          <div className="mt-6 font-mono text-[11px] text-zinc-500">{footer}</div>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
 
-export function Field({ label, ...props }) {
+export function Field({ label, hint, ...props }) {
   return (
     <label className="block">
-      <span className="kx-label">{label}</span>
-      <input {...props} className="kx-input mt-2 w-full px-3 py-2.5" />
+      <span className="block text-sm font-medium text-kx-ink2">{label}</span>
+      <input {...props} className="kx-input mt-1.5 h-10 w-full px-3" />
+      {hint && <span className="mt-1.5 block text-xs text-kx-muted">{hint}</span>}
     </label>
   );
 }
 
+export const FormError = ({ children, testid }) => (
+  <div
+    role="alert"
+    data-testid={testid}
+    className="rounded-control border border-kx-negative/30 bg-kx-negative/5 px-3 py-2 text-sm text-kx-negative"
+  >
+    {children}
+  </div>
+);
+
 export default function Login() {
-  const { login } = useAuth();
+  const { login, demoLogin } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("admin@kortex.dev");
-  const [password, setPassword] = useState("kortex2026");
+  const location = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [demo, setDemo] = useState(false);
 
-  const submit = async (e) => {
-    e.preventDefault();
+  // "Try the demo" signs into a shared non-admin trial account; the server
+  // only offers it while demo mode is on.
+  useEffect(() => {
+    let alive = true;
+    api
+      .get("/system/stats")
+      .then(({ data }) => {
+        if (alive) setDemo(data?.demo_mode === true);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const signIn = async (attempt) => {
     setBusy(true);
     setErr("");
     try {
-      await login(email, password);
-      toast.success("Session established");
-      navigate("/app", { replace: true });
+      await attempt();
+      toast.success("Signed in");
+      const from = location.state?.from;
+      navigate(typeof from === "string" && from.startsWith("/app") ? from : "/app", {
+        replace: true,
+      });
     } catch (ex) {
-      const m = apiError(ex, "Login failed");
+      const m = apiError(ex, "Sign-in failed");
       setErr(m);
       toast.error(m);
     }
     setBusy(false);
   };
 
+  const submit = (e) => {
+    e.preventDefault();
+    signIn(() => login(email, password));
+  };
+
   return (
     <AuthFrame
-      kicker="Authenticate"
-      title="Console access"
+      title="Sign in to Kortex"
+      sub="Manage your links and see who's clicking."
       footer={
         <>
           No account?{" "}
-          <Link to="/register" className="text-kx-cyan hover:underline" data-testid="to-register">
+          <Link
+            to="/register"
+            className="font-medium text-kx-accent hover:underline"
+            data-testid="to-register"
+          >
             Create one
           </Link>
         </>
@@ -106,6 +144,7 @@ export default function Login() {
         <Field
           label="Email"
           type="email"
+          autoComplete="email"
           required
           value={email}
           data-testid="login-email"
@@ -114,28 +153,40 @@ export default function Login() {
         <Field
           label="Password"
           type="password"
+          autoComplete="current-password"
           required
           value={password}
           data-testid="login-password"
           onChange={(e) => setPassword(e.target.value)}
         />
-        {err && (
-          <div
-            data-testid="login-error"
-            className="border border-kx-red/40 bg-kx-red/5 px-3 py-2 font-mono text-[11px] text-kx-red"
-          >
-            {err}
-          </div>
-        )}
-        <Button type="submit" disabled={busy} className="w-full py-3" data-testid="login-submit">
-          {busy ? "Authenticating…" : "Sign in"}
+        {err && <FormError testid="login-error">{err}</FormError>}
+        <Button
+          type="submit"
+          size="lg"
+          disabled={busy}
+          className="w-full"
+          data-testid="login-submit"
+        >
+          {busy ? "Signing in…" : "Sign in"}
         </Button>
       </form>
-      <div className="mt-4 border border-kx-line bg-kx-surface px-3 py-2 font-mono text-[10px] leading-relaxed text-zinc-500">
-        demo account pre-filled · admin@kortex.dev / kortex2026
-        <br />
-        14 days of seeded click history, 180k rows
-      </div>
+      {demo && (
+        <div className="mt-3" data-testid="login-demo">
+          <Button
+            variant="secondary"
+            size="lg"
+            disabled={busy}
+            className="w-full"
+            data-testid="login-demo-btn"
+            onClick={() => signIn(demoLogin)}
+          >
+            Try the demo
+          </Button>
+          <p className="mt-2 text-center text-xs text-kx-muted">
+            A shared trial account. Sample links are read-only; create your own to edit.
+          </p>
+        </div>
+      )}
     </AuthFrame>
   );
 }
