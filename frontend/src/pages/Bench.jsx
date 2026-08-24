@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -9,9 +9,11 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
-import { Gauge, Play, Square, Waves } from "lucide-react";
+import { Check, Play, Square, Waves } from "lucide-react";
 import { api, apiError, compact, fmt } from "@/lib/api";
-import { Panel, Stat, Chip, Button, Empty, ChartTip } from "@/components/kx";
+import { useChartColors } from "@/context/ThemeContext";
+import { usePolling } from "@/hooks/usePolling";
+import { Panel, Stat, Chip, Button, Empty, ChartTip, ErrorNote, PageHeader } from "@/components/kx";
 
 const TARGETS = {
   rps: 21000,
@@ -19,6 +21,9 @@ const TARGETS = {
   hit: 99.2,
   ingest: 41666,
 };
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const KIND = { redirect: "load test", ingest: "event ingest" };
 
 function Terminal({ lines }) {
   const ref = useRef();
@@ -29,10 +34,10 @@ function Terminal({ lines }) {
     <div
       ref={ref}
       data-testid="bench-terminal"
-      className="kx-scanlines relative h-[240px] overflow-y-auto bg-black p-4 font-mono text-[11px] leading-relaxed text-kx-green"
+      className="max-h-[360px] overflow-y-auto rounded-control border border-kx-line bg-kx-card px-4 py-3 font-mono text-xs leading-relaxed text-kx-ink2"
     >
       {lines.length === 0 ? (
-        <span className="text-zinc-700">// waiting for a run…</span>
+        <span className="font-sans text-sm text-kx-muted">Waiting for a run.</span>
       ) : (
         lines.map((l, i) => (
           <div key={i} className="whitespace-pre-wrap">
@@ -44,32 +49,93 @@ function Terminal({ lines }) {
   );
 }
 
+function Slider({ id, label, value, display, testid, onChange, ...range }) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <label className="kx-label" htmlFor={id}>
+          {label}
+        </label>
+        <span className="kx-num text-sm font-semibold text-kx-ink">{display}</span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        value={value}
+        data-testid={testid}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-2 w-full"
+        {...range}
+      />
+    </div>
+  );
+}
+
+function TargetRow({ label, measured, target, format, unit, better }) {
+  const has = measured > 0;
+  const met = has && (better === "high" ? measured >= target : measured <= target);
+  // The track is 0 → target; the fill is the true measured / target ratio (capped at the end).
+  const pct = has ? Math.min(100, (measured / target) * 100) : 0;
+  const over = has && better === "low" && measured > target;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-sm text-kx-ink2">{label}</span>
+        <span className="flex items-baseline gap-2">
+          {met && (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-kx-positive">
+              <Check size={12} aria-hidden="true" /> Met
+            </span>
+          )}
+          {over && <span className="text-xs font-medium text-kx-warning">Over target</span>}
+          <span className={`kx-num text-sm font-semibold ${has ? "text-kx-ink" : "text-kx-muted"}`}>
+            {has ? format(measured) : "—"}
+            {has && <span className="ml-1 font-normal text-kx-muted">{unit}</span>}
+          </span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-kx-hover">
+        <div
+          className={`h-full rounded-full transition-[width] duration-700 ${
+            over ? "bg-kx-warning" : "bg-kx-accent"
+          }`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <div className="kx-num mt-1 flex justify-between text-xs text-kx-faint">
+        <span>0</span>
+        <span>
+          Target {format(target)} {unit}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function Bench() {
   const [snap, setSnap] = useState(null);
   const [duration, setDuration] = useState(10);
   const [vus, setVus] = useState(64);
   const [events, setEvents] = useState(1000000);
-  const [kind, setKind] = useState("redirect");
-  const poll = useRef();
+  const [err, setErr] = useState("");
+  const c = useChartColors();
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     try {
       const { data } = await api.get("/bench/status");
       setSnap(data);
+      setErr("");
       return data;
-    } catch {
+    } catch (e) {
+      setErr(apiError(e, "Could not read benchmark status"));
       return null;
     }
-  };
-
-  useEffect(() => {
-    refresh();
-    poll.current = setInterval(refresh, 700);
-    return () => clearInterval(poll.current);
   }, []);
 
+  // Fast while a run is live, lazy otherwise; both pause in background tabs.
+  usePolling(refresh, snap?.running ? 700 : 5000);
+
   const start = async (k) => {
-    setKind(k);
     try {
       await api.post("/bench/start", {
         kind: k,
@@ -78,311 +144,313 @@ export default function Bench() {
         events: Number(events),
       });
       toast.success(k === "ingest" ? "Ingest benchmark started" : "Load test started");
+      refresh();
     } catch (e) {
-      toast.error(apiError(e));
+      toast.error(apiError(e, "Could not start benchmark"));
     }
   };
 
   const stop = async () => {
-    await api.post("/bench/stop");
-    toast.message("Stopping…");
+    try {
+      await api.post("/bench/stop");
+      toast.message("Stopping…");
+      refresh();
+    } catch (e) {
+      toast.error(apiError(e, "Could not stop benchmark"));
+    }
   };
 
-  const running = snap?.running;
+  const running = !!snap?.running;
   const pct = Math.min(100, (snap?.progress || 0) * 100);
+  // Each figure comes from the latest run of its own kind (the current one if it
+  // matches), so a load test doesn't blank the previous ingest result.
+  const lt = snap?.kind === "redirect" ? snap : snap?.last_redirect;
+  const ig = snap?.kind === "ingest" ? snap : snap?.last_ingest;
+  const ran = (lt?.requests || 0) > 0;
+  const ingested = (ig?.ingest_rate || 0) > 0;
+  const ms = (v, d = 2) => (v ? v.toFixed(d) : "—");
+  const tick = { fill: c.muted, fontSize: 11 };
 
   return (
-    <div className="space-y-4" data-testid="bench-page">
-      <div>
-        <div className="kx-label">Console / Benchmark</div>
-        <h1 className="mt-1.5 font-display text-3xl font-black tracking-tighter lg:text-4xl">
-          Load generator
-        </h1>
-        <p className="mt-3 max-w-3xl text-sm leading-relaxed text-zinc-400">
-          A k6-style runner living inside the Go process. It opens real keep-alive HTTP connections to
-          the loopback redirect endpoint, so every request pays for routing, Redis, expiry checks and
-          the async event emit. The load generator shares CPU with the server it is testing — that
-          ceiling is honest, not tuned.
-        </p>
-      </div>
+    <div className="space-y-5" data-testid="bench-page">
+      <PageHeader
+        title="Benchmark"
+        sub="Load-test the redirect path and the click pipeline. Runs hit 16 dedicated benchmark links, so customer and demo analytics stay untouched."
+      />
 
-      <Panel testid="bench-controls" title="run configuration">
-        <div className="grid gap-4 lg:grid-cols-4">
-          <div>
-            <span className="kx-label">duration (s)</span>
-            <input
-              type="range"
-              min="5"
-              max="60"
-              value={duration}
-              data-testid="bench-duration"
-              onChange={(e) => setDuration(e.target.value)}
-              className="mt-3 w-full accent-kx-cyan"
+      {err && <ErrorNote testid="bench-error">{err}</ErrorNote>}
+
+      <Panel
+        testid="bench-controls"
+        title="Run configuration"
+        right={
+          <Chip tone={running ? "accent" : "neutral"}>
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                running ? "animate-kx-pulse bg-kx-accent" : "bg-kx-faint"
+              }`}
             />
-            <div className="kx-num mt-1 text-lg font-bold">{duration}s</div>
+            {running ? "Running" : "Idle"}
+          </Chip>
+        }
+      >
+        <div className="grid gap-5 sm:grid-cols-3">
+          <Slider
+            id="bench-duration"
+            label="Duration"
+            min="5"
+            max="60"
+            value={duration}
+            display={`${duration} s`}
+            testid="bench-duration"
+            onChange={setDuration}
+          />
+          <Slider
+            id="bench-vus"
+            label="Virtual users"
+            min="8"
+            max="512"
+            step="8"
+            value={vus}
+            display={fmt.format(Number(vus))}
+            testid="bench-vus"
+            onChange={setVus}
+          />
+          <Slider
+            id="bench-events"
+            label="Events to ingest"
+            min="100000"
+            max="5000000"
+            step="100000"
+            value={events}
+            display={compact(Number(events))}
+            testid="bench-events"
+            onChange={setEvents}
+          />
+        </div>
+
+        <div className="mt-5 flex flex-col gap-4 border-t border-kx-line pt-4 md:flex-row md:items-center">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between text-xs text-kx-muted">
+              <span>
+                {cap(snap?.phase || "idle")}
+                {snap?.kind ? ` · ${KIND[snap.kind] || snap.kind}` : ""}
+              </span>
+              <span className="kx-num">{pct.toFixed(0)}%</span>
+            </div>
+            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-kx-hover">
+              <div
+                className="h-full rounded-full bg-kx-accent transition-[width] duration-500"
+                style={{ width: `${pct}%` }}
+                data-testid="bench-progress"
+              />
+            </div>
           </div>
-          <div>
-            <span className="kx-label">virtual users</span>
-            <input
-              type="range"
-              min="8"
-              max="512"
-              step="8"
-              value={vus}
-              data-testid="bench-vus"
-              onChange={(e) => setVus(e.target.value)}
-              className="mt-3 w-full accent-kx-cyan"
-            />
-            <div className="kx-num mt-1 text-lg font-bold">{vus} VUs</div>
-          </div>
-          <div>
-            <span className="kx-label">ingest events</span>
-            <input
-              type="range"
-              min="100000"
-              max="5000000"
-              step="100000"
-              value={events}
-              data-testid="bench-events"
-              onChange={(e) => setEvents(e.target.value)}
-              className="mt-3 w-full accent-kx-yellow"
-            />
-            <div className="kx-num mt-1 text-lg font-bold">{compact(Number(events))}</div>
-          </div>
-          <div className="flex flex-col justify-end gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
-              variant="solid"
               disabled={running}
               onClick={() => start("redirect")}
               data-testid="run-benchmark-btn"
-              className="py-3"
             >
-              <Play size={13} strokeWidth={2.5} /> Run redirect load test
+              <Play size={14} aria-hidden="true" /> Run load test
             </Button>
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                disabled={running}
-                onClick={() => start("ingest")}
-                data-testid="run-ingest-btn"
-                className="flex-1"
-              >
-                <Waves size={12} /> Ingest
-              </Button>
-              <Button variant="danger" disabled={!running} onClick={stop} data-testid="stop-benchmark-btn">
-                <Square size={12} />
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-widest text-zinc-500">
-            <span>
-              {snap?.phase || "idle"} · {snap?.kind || "—"}
-            </span>
-            <span>{pct.toFixed(0)}%</span>
-          </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden bg-kx-line">
-            <div
-              className="h-full bg-kx-cyan transition-[width] duration-500"
-              style={{ width: `${pct}%` }}
-              data-testid="bench-progress"
-            />
+            <Button
+              variant="secondary"
+              disabled={running}
+              onClick={() => start("ingest")}
+              data-testid="run-ingest-btn"
+            >
+              <Waves size={14} aria-hidden="true" /> Ingest events
+            </Button>
+            <Button
+              variant="danger"
+              disabled={!running}
+              onClick={stop}
+              data-testid="stop-benchmark-btn"
+            >
+              <Square size={12} aria-hidden="true" /> Stop
+            </Button>
           </div>
         </div>
       </Panel>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
         <Stat
           testid="bench-rps"
-          label="throughput"
-          value={snap?.rps ? fmt.format(Math.round(snap.rps)) : "—"}
-          unit="req/s"
-          sub={`peak ${snap?.peak_rps ? fmt.format(Math.round(snap.peak_rps)) : "—"}`}
-          accent="#00E5FF"
+          label="Throughput"
+          value={lt?.rps ? fmt.format(Math.round(lt.rps)) : "—"}
+          tone={lt?.rps ? "default" : "muted"}
+          unit={lt?.rps ? "req/s" : undefined}
+          sub={`Peak ${lt?.peak_rps ? fmt.format(Math.round(lt.peak_rps)) : "—"}`}
         />
         <Stat
           testid="bench-p99"
           label="p99 latency"
-          value={snap?.p99_ms ? snap.p99_ms.toFixed(2) : "—"}
-          unit="ms"
-          sub={`p50 ${snap?.p50_ms ? snap.p50_ms.toFixed(2) : "—"}ms`}
-          accent="#00FF66"
+          value={ms(lt?.p99_ms)}
+          tone={lt?.p99_ms ? "default" : "muted"}
+          unit={lt?.p99_ms ? "ms" : undefined}
+          sub={`p50 ${ms(lt?.p50_ms)} ms`}
         />
         <Stat
           testid="bench-p95"
           label="p95 latency"
-          value={snap?.p95_ms ? snap.p95_ms.toFixed(2) : "—"}
-          unit="ms"
-          sub={`max ${snap?.max_ms ? snap.max_ms.toFixed(1) : "—"}ms`}
+          value={ms(lt?.p95_ms)}
+          tone={lt?.p95_ms ? "default" : "muted"}
+          unit={lt?.p95_ms ? "ms" : undefined}
+          sub={`Max ${ms(lt?.max_ms, 1)} ms`}
         />
         <Stat
           testid="bench-hitrate"
-          label="cache hit rate"
-          value={snap?.cache_hit_rate ? snap.cache_hit_rate.toFixed(2) : "—"}
-          unit="%"
-          sub={snap ? `${compact(snap.cache_hits)} hits` : ""}
-          accent="#FFD60A"
+          label="Cache hit rate"
+          value={lt?.cache_hit_rate ? lt.cache_hit_rate.toFixed(2) : "—"}
+          tone={lt?.cache_hit_rate ? "default" : "muted"}
+          unit={lt?.cache_hit_rate ? "%" : undefined}
+          sub={ran ? `${compact(lt.cache_hits)} hits` : "No run yet"}
         />
         <Stat
           testid="bench-requests"
-          label="requests"
-          value={snap ? compact(snap.requests) : "—"}
-          sub={snap ? `${snap.errors} errors` : ""}
+          label="Requests"
+          value={ran ? compact(lt.requests) : "—"}
+          tone={ran ? "default" : "muted"}
+          sub={
+            ran
+              ? `${fmt.format(lt.errors || 0)} ${lt.errors === 1 ? "error" : "errors"}`
+              : "No run yet"
+          }
         />
         <Stat
           testid="bench-ingest"
-          label="ingest rate"
-          value={snap?.ingest_rate ? compact(snap.ingest_rate) : "—"}
-          unit="evt/s"
-          sub={snap ? `${compact(snap.events_stored)} rows` : ""}
-          accent="#8A2BE2"
+          label="Ingest rate"
+          value={ingested ? compact(ig.ingest_rate) : "—"}
+          tone={ingested ? "default" : "muted"}
+          unit={ingested ? "evt/s" : undefined}
+          sub={ingested ? `${compact(ig.events_stored)} rows stored` : "No run yet"}
         />
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[1.4fr_1fr]">
+      <div className="space-y-5">
         <Panel
           testid="bench-chart"
-          title="throughput & p99 over time"
-          sub="sampled every 500ms during the run"
-          right={
-            <Chip tone={running ? "green" : "zinc"}>
-              <span className={`h-1.5 w-1.5 ${running ? "animate-kx-pulse bg-kx-green" : "bg-zinc-600"}`} />
-              {running ? "running" : "idle"}
-            </Chip>
-          }
+          title="Throughput and p99 latency"
+          sub="Sampled every 500 ms during the run"
         >
-          <div className="h-[240px]">
-            {!snap?.series?.length ? (
-              <Empty>run a load test to plot throughput</Empty>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={snap.series} margin={{ top: 6, right: 8, left: -18, bottom: 0 }}>
-                  <CartesianGrid stroke="#1b1b1b" vertical={false} />
-                  <XAxis
-                    dataKey="t"
-                    tickFormatter={(v) => `${v.toFixed(1)}s`}
-                    tick={{ fill: "#52525b", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    tickLine={false}
-                    axisLine={{ stroke: "#222" }}
-                    minTickGap={24}
-                  />
-                  <YAxis
-                    yAxisId="l"
-                    tick={{ fill: "#52525b", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    tickLine={false}
-                    axisLine={false}
-                    tickFormatter={compact}
-                  />
-                  <YAxis
-                    yAxisId="r"
-                    orientation="right"
-                    tick={{ fill: "#52525b", fontSize: 10, fontFamily: "JetBrains Mono" }}
-                    tickLine={false}
-                    axisLine={false}
-                  />
-                  <Tooltip content={<ChartTip />} />
-                  <Line
-                    yAxisId="l"
-                    type="linear"
-                    dataKey="rps"
-                    name="req/s"
-                    stroke="#00E5FF"
-                    strokeWidth={1.8}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                  <Line
-                    yAxisId="r"
-                    type="linear"
-                    dataKey="p99"
-                    name="p99 ms"
-                    stroke="#FF3B30"
-                    strokeWidth={1.4}
-                    dot={false}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
+          {!snap?.series?.length ? (
+            <Empty>Run a load test to see throughput over time.</Empty>
+          ) : (
+            <>
+              <div className="mb-3 flex items-center gap-4 text-xs text-kx-muted">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full bg-kx-accent" /> Requests/s
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-0.5 w-3 rounded-full bg-kx-ink2" /> p99 ms
+                </span>
+              </div>
+              <div className="h-[240px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={snap.series} margin={{ top: 6, right: 0, left: -12, bottom: 0 }}>
+                    <CartesianGrid stroke={c.grid} vertical={false} />
+                    <XAxis
+                      dataKey="t"
+                      tickFormatter={(v) => (v % 1 ? `${v.toFixed(1)}s` : `${v}s`)}
+                      tick={tick}
+                      tickLine={false}
+                      axisLine={{ stroke: c.line }}
+                      minTickGap={24}
+                    />
+                    <YAxis
+                      yAxisId="l"
+                      tick={tick}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={compact}
+                    />
+                    <YAxis
+                      yAxisId="r"
+                      orientation="right"
+                      tick={tick}
+                      tickLine={false}
+                      axisLine={false}
+                      width={36}
+                    />
+                    <Tooltip
+                      content={<ChartTip labelFormat={(v) => `${Number(v).toFixed(1)} s`} />}
+                      cursor={{ stroke: c.line2 }}
+                    />
+                    <Line
+                      yAxisId="l"
+                      type="linear"
+                      dataKey="rps"
+                      name="Requests/s"
+                      stroke={c.accent}
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      yAxisId="r"
+                      type="linear"
+                      dataKey="p99"
+                      name="p99 ms"
+                      stroke={c.ink2}
+                      strokeWidth={1.25}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
         </Panel>
 
-        <Panel testid="bench-vs-target" title="measured vs design target">
-          <div className="space-y-4">
-            {[
-              {
-                l: "redirect throughput",
-                m: snap?.rps || 0,
-                t: TARGETS.rps,
-                f: (v) => fmt.format(Math.round(v)),
-                u: "req/s",
-                better: "high",
-              },
-              {
-                l: "p99 latency",
-                m: snap?.p99_ms || 0,
-                t: TARGETS.p99,
-                f: (v) => v.toFixed(2),
-                u: "ms",
-                better: "low",
-              },
-              {
-                l: "cache hit rate",
-                m: snap?.cache_hit_rate || 0,
-                t: TARGETS.hit,
-                f: (v) => v.toFixed(2),
-                u: "%",
-                better: "high",
-              },
-              {
-                l: "ingest rate",
-                m: snap?.ingest_rate || 0,
-                t: TARGETS.ingest,
-                f: (v) => compact(v),
-                u: "evt/s",
-                better: "high",
-              },
-            ].map((r) => {
-              const ratio = r.better === "high" ? r.m / r.t : r.t / Math.max(r.m, 0.001);
-              const ok = r.m > 0 && ratio >= 1;
-              return (
-                <div key={r.l}>
-                  <div className="flex items-baseline justify-between font-mono text-[11px]">
-                    <span className="text-zinc-300">{r.l}</span>
-                    <span className={ok ? "text-kx-green" : "text-white"}>
-                      {r.m ? r.f(r.m) : "—"} <span className="text-zinc-600">/ {r.f(r.t)} {r.u}</span>
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 w-full bg-kx-line">
-                    <div
-                      className="h-full transition-[width] duration-700"
-                      style={{
-                        width: `${Math.min(100, (r.m ? ratio : 0) * 100)}%`,
-                        backgroundColor: ok ? "#00FF66" : "#00E5FF",
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            <p className="border-t border-kx-line pt-3 font-mono text-[10px] leading-relaxed text-zinc-600">
-              Targets come from a dedicated single node with the load generator on separate hardware.
-              This pod runs both, on shared cores under a CFS quota, behind an extra proxy hop. p50 and
-              p95 land close to target; p99 sits near 70ms because CPU throttling parks the whole
-              container for most of a 100ms scheduling period once the runner saturates its quota.
-            </p>
+        <Panel testid="bench-vs-target" title="Measured vs design target">
+          <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+            <TargetRow
+              label="Redirect throughput"
+              measured={lt?.rps || 0}
+              target={TARGETS.rps}
+              format={(v) => fmt.format(Math.round(v))}
+              unit="req/s"
+              better="high"
+            />
+            <TargetRow
+              label="p99 latency"
+              measured={lt?.p99_ms || 0}
+              target={TARGETS.p99}
+              format={(v) => v.toFixed(2)}
+              unit="ms"
+              better="low"
+            />
+            <TargetRow
+              label="Cache hit rate"
+              measured={lt?.cache_hit_rate || 0}
+              target={TARGETS.hit}
+              format={(v) => v.toFixed(1)}
+              unit="%"
+              better="high"
+            />
+            <TargetRow
+              label="Ingest rate"
+              measured={ig?.ingest_rate || 0}
+              target={TARGETS.ingest}
+              format={(v) => compact(v)}
+              unit="evt/s"
+              better="high"
+            />
           </div>
+          <p className="mt-5 border-t border-kx-line pt-3 text-xs leading-relaxed text-kx-muted">
+            Targets assume a dedicated node with the load generator on separate hardware. Here the
+            runner shares CPU with the server it is testing, so p99 suffers most once the cores (or
+            a container CPU quota) are saturated.
+          </p>
         </Panel>
       </div>
 
       <Panel
         testid="bench-log-panel"
-        title="runner output"
+        title="Runner output"
         sub="k6-style summary written by the Go runner"
-        right={<Gauge size={14} className="text-zinc-600" strokeWidth={1.5} />}
-        pad="p-0"
       >
         <Terminal lines={snap?.log || []} />
       </Panel>
